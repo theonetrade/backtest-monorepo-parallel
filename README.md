@@ -175,7 +175,7 @@ Re-pointing any of these to a custom adapter is one line in [config/setup.config
 
 Notable runtime deps from the root [package.json](package.json):
 
-- **`backtest-kit` 9.8.1** — engine. [`@backtest-kit/cli`](https://npmjs.org/package/@backtest-kit/cli) is the runner; [`@backtest-kit/mongo`](https://npmjs.org/package/@backtest-kit/mongo) supplies `setup()` + persist adapters; [`@backtest-kit/ui`](https://npmjs.org/package/@backtest-kit/ui) is the optional web UI on `:60050`.
+- **`backtest-kit` 9.8.2** — engine. [`@backtest-kit/cli`](https://npmjs.org/package/@backtest-kit/cli) is the runner; [`@backtest-kit/mongo`](https://npmjs.org/package/@backtest-kit/mongo) supplies `setup()` + persist adapters; [`@backtest-kit/ui`](https://npmjs.org/package/@backtest-kit/ui) is the optional web UI on `:60050`.
 - **`di-kit`** — symbol-keyed IoC container used by `@pro/core` (re-exported as `createActivator("pro")`).
 - **`di-factory`** — class-factory helper for `BaseCRUD` and `BaseMap`.
 - **`mongoose` 8.x** — Mongo client + schemas.
