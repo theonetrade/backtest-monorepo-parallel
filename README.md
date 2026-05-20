@@ -4,6 +4,8 @@
 
 > A **TypeScript monorepo template** for [backtest-kit](https://github.com/tripolskypetr/backtest-kit) that runs **9 symbols in parallel** with shared infrastructure (Mongo + Redis) and a **self-enforcement runtime** — strategy files in `./content/` can reach the workspace DI container (`globalThis.core`) at strategy-evaluation time without imports, without bundler hooks, and without touching the strategy author's code.
 
+![screenshot](https://raw.githubusercontent.com/tripolskypetr/backtest-kit/HEAD/assets/screenshots/screenshot16.png)
+
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/tripolskypetr/backtest-kit)
 [![npm](https://img.shields.io/npm/v/backtest-kit.svg?style=flat-square)](https://npmjs.org/package/backtest-kit)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue)]()
@@ -12,47 +14,44 @@
 
 ---
 
-## 📐 Layout
+## ⚡ Measured Speed
 
-```
-backtest-monorepo-parallel/
-├── packages/
-│   ├── core/                ← @pro/core — DI container, services, mongo schemas
-│   │   ├── src/
-│   │   │   ├── lib/
-│   │   │   │   ├── core/    ← di-kit activator: provide/inject/init
-│   │   │   │   ├── common/  ← BaseCRUD (mongoose), BaseMap (ioredis)
-│   │   │   │   └── services/  ← Logger, Scraper, Parser, CandleDb, Screen…
-│   │   │   ├── schema/      ← Mongoose models (Candle.schema.ts)
-│   │   │   ├── model/       ← Pure TS interfaces
-│   │   │   └── index.ts     ← exports `ioc` AND attaches it to globalThis
-│   │   ├── rollup.config.mjs → build/index.cjs + types.d.ts
-│   │   └── types.d.ts       ← rolled-up declaration bundle (auto-generated)
-│   └── main/                ← @pro/main — CLI entry points
-│       ├── src/
-│       │   ├── main/
-│       │   │   ├── backtest.ts   ← 9-symbol parallel runner (Backtest.background)
-│       │   │   ├── live.ts       ← live trading runner
-│       │   │   ├── paper.ts      ← paper-trading runner
-│       │   │   └── session.ts    ← Telegram QR auth
-│       │   ├── helpers/getArgs.ts
-│       │   └── config/params.ts  ← CC_SYMBOL_LIST default
-│       └── rollup.config.mjs
-├── content/
-│   └── apr_2026.strategy/   ← strategy bundle loaded by @backtest-kit/cli
-│       ├── apr_2026.strategy.ts
-│       └── modules/backtest.module.ts  ← addExchangeSchema + addFrameSchema
-├── config/
-│   ├── alias.config.ts      ← maps "@pro/core" → ./packages/core/build/index.cjs
-│   ├── loader.config.ts     ← imports @pro/core, @pro/main + waits for Mongo
-│   └── setup.config.ts      ← wires persist adapters (Mongo, Local, Memory)
-├── scripts/
-│   ├── win/build.bat        ← iterates packages/*, runs `npm run build` in each
-│   └── linux/build.sh       ← same, plus `npm install` per package
-├── docker/                  ← infra: mongodb + redis docker-compose files
-├── tsconfig.json            ← path aliases @pro/core, @pro/main → types.d.ts
-└── package.json             ← workspaces: ./packages/*
-```
+> At ~6 300× real time, a full 27-day window across all 9 symbols (extrapolating linearly from the 34-minute slice) takes **on the order of a few minutes of wall time**, dominated by Mongo writes + first-touch candle fetches. The hot loop itself — `listenActivePing → getPositionEntries → commitAverageBuy` — runs at the **103 ev/s** rate measured above.
+
+`apr_2026.strategy.ts` prints `active <SYMBOL> backtest=<historicalMs> now=<wallClockMs>` on every `listenActivePing`. The file in this repo captured **297 events across 9 symbols** in **a single Node process**, against a hot Mongo + Redis cache, on a **HP Victus 15-FA1022CI** laptop (mid-range gaming-class, i.e. commodity developer hardware — not a server).
+
+### Test bench
+
+| Component | Spec |
+|---|---|
+| Model | HP Victus by HP Gaming Laptop 15-fa1xxx |
+| CPU | **13th Gen Intel® Core™ i5-13420H** — 8 cores / 12 threads, base 2.10 GHz, 12 MB L3 |
+| RAM | **16 GB** DDR4 (2× SK Hynix 8 GB @ 3200 MT/s) |
+| GPU | Intel UHD Graphics (iGPU) + NVIDIA GeForce RTX 2050 4 GB (dGPU, **unused** by the runtime — Node only) |
+| Storage | Samsung MZVL2512HCJQ NVMe SSD, 512 GB |
+| OS | Windows 10 Enterprise LTSC 19044 (64-bit) |
+| Node | single process; Mongo + Redis on the same machine via docker-compose |
+
+### Measured numbers
+
+| Metric | Value |
+|---|---|
+| Wall-clock span (first → last event) | `1779292952202 − 1779292949309` = **2 893 ms** (~2.9 s) |
+| Total events captured | **297** |
+| Symbols running in parallel | **9** (BTC, POL, ZEC, HYPE, XAUT, DOGE, SOL, PENGU, HBAR) |
+| Historical time advanced per symbol | `1775003640000 − 1775001600000` = **2 040 000 ms** = **34 minutes** |
+| **Per-symbol replay speed** | 34 min historical ÷ 2.9 s wall = **≈ 703×** real-time |
+| **Aggregate replay speed (9 symbols)** | 9 × 703 = **≈ 6 326×** real-time |
+| Event throughput | 297 ev / 2.893 s = **≈ 103 events/sec** (one Node process) |
+| Frame coverage | `2026-04-01 → 2026-04-27` = 27 days × 1m candles = **38 880 candles/symbol × 9** = **~350 000 candle ticks** |
+
+### Why so fast?
+
+1. **Single-process concurrency.** All 9 `Backtest.background(...)` calls share one Node event loop, one Mongo connection pool, and one Redis pool. No IPC, no subprocess fork overhead.
+2. **Redis O(1) lookup cache.** Every `findByContext(...)` is a hot-path Redis `GET` (one round-trip on localhost) before falling back to Mongo. See [BaseMap](packages/core/src/lib/common/BaseMap.ts) — strings only, no JSON parse on the cache key.
+3. **Atomic upserts.** Every `write*Data(...)` is a single `findOneAndUpdate({ filter:uniqueIndex, $set:payload }, { upsert, new })` — no read-modify-write, no application-side locks, no E11000 retry loop under concurrent symbol writes.
+4. **Cached candles.** The `--cache` flag in Mode A pre-warms every symbol's candles into Mongo via [`cacheCandles`](packages/main/src/main/backtest.ts#L5) before the runners start, so the inner loop never blocks on ccxt HTTP. Pure CPU + local I/O from that point on.
+5. **JIT-friendly hot path.** The per-tick body in [`apr_2026.strategy.ts`](content/apr_2026.strategy/apr_2026.strategy.ts) is ~30 lines of synchronous arithmetic + a few awaited helpers. V8 inlines aggressively.
 
 ---
 
@@ -96,107 +95,6 @@ npm run start -- --backtest --ui --noCache ./content/apr_2026.strategy/apr_2026.
 ```
 
 No `--entry` → [`packages/main/src/main/backtest.ts`](packages/main/src/main/backtest.ts) early-returns, and the bundled CLI from `@backtest-kit/cli` takes over: it loads the strategy file, calls schemas registered inside it, and runs a single backtest on whatever symbol the strategy itself dispatches.
-
----
-
-## ⚡ Measured Speed (from `./log.txt`)
-
-`apr_2026.strategy.ts` prints `active <SYMBOL> backtest=<historicalMs> now=<wallClockMs>` on every `listenActivePing`. The file in this repo captured **297 events across 9 symbols** in **a single Node process**, against a hot Mongo + Redis cache, on a **HP Victus 15-FA1022CI** laptop (mid-range gaming-class, i.e. commodity developer hardware — not a server).
-
-### Test bench
-
-| Component | Spec |
-|---|---|
-| Model | HP Victus by HP Gaming Laptop 15-fa1xxx |
-| CPU | **13th Gen Intel® Core™ i5-13420H** — 8 cores / 12 threads, base 2.10 GHz, 12 MB L3 |
-| RAM | **16 GB** DDR4 (2× SK Hynix 8 GB @ 3200 MT/s) |
-| GPU | Intel UHD Graphics (iGPU) + NVIDIA GeForce RTX 2050 4 GB (dGPU, **unused** by the runtime — Node only) |
-| Storage | Samsung MZVL2512HCJQ NVMe SSD, 512 GB |
-| OS | Windows 10 Enterprise LTSC 19044 (64-bit) |
-| Node | single process; Mongo + Redis on the same machine via docker-compose |
-
-### Measured numbers
-
-| Metric | Value |
-|---|---|
-| Wall-clock span (first → last event) | `1779292952202 − 1779292949309` = **2 893 ms** (~2.9 s) |
-| Total events captured | **297** |
-| Symbols running in parallel | **9** (BTC, POL, ZEC, HYPE, XAUT, DOGE, SOL, PENGU, HBAR) |
-| Historical time advanced per symbol | `1775003640000 − 1775001600000` = **2 040 000 ms** = **34 minutes** |
-| **Per-symbol replay speed** | 34 min historical ÷ 2.9 s wall = **≈ 703×** real-time |
-| **Aggregate replay speed (9 symbols)** | 9 × 703 = **≈ 6 326×** real-time |
-| Event throughput | 297 ev / 2.893 s = **≈ 103 events/sec** (one Node process) |
-| Frame coverage | `2026-04-01 → 2026-04-27` = 27 days × 1m candles = **38 880 candles/symbol × 9** = **~350 000 candle ticks** |
-
-> At ~6 300× real time, a full 27-day window across all 9 symbols (extrapolating linearly from the 34-minute slice) takes **on the order of a few minutes of wall time**, dominated by Mongo writes + first-touch candle fetches. The hot loop itself — `listenActivePing → getPositionEntries → commitAverageBuy` — runs at the **103 ev/s** rate measured above.
-
-### Why so fast?
-
-1. **Single-process concurrency.** All 9 `Backtest.background(...)` calls share one Node event loop, one Mongo connection pool, and one Redis pool. No IPC, no subprocess fork overhead.
-2. **Redis O(1) lookup cache.** Every `findByContext(...)` is a hot-path Redis `GET` (one round-trip on localhost) before falling back to Mongo. See [BaseMap](packages/core/src/lib/common/BaseMap.ts) — strings only, no JSON parse on the cache key.
-3. **Atomic upserts.** Every `write*Data(...)` is a single `findOneAndUpdate({ filter:uniqueIndex, $set:payload }, { upsert, new })` — no read-modify-write, no application-side locks, no E11000 retry loop under concurrent symbol writes.
-4. **Cached candles.** The `--cache` flag in Mode A pre-warms every symbol's candles into Mongo via [`cacheCandles`](packages/main/src/main/backtest.ts#L5) before the runners start, so the inner loop never blocks on ccxt HTTP. Pure CPU + local I/O from that point on.
-5. **JIT-friendly hot path.** The per-tick body in [`apr_2026.strategy.ts`](content/apr_2026.strategy/apr_2026.strategy.ts) is ~30 lines of synchronous arithmetic + a few awaited helpers. V8 inlines aggressively.
-
----
-
-## 🧠 Self-Enforcement Runtime (the key trick)
-
-The strategy file in `./content/` is **loaded at runtime by `@backtest-kit/cli`** — not bundled, not transpiled by the monorepo's rollup. The CLI evaluates it with the same Node module loader that already has `@pro/core` and `@pro/main` in memory. The DI container makes itself reachable from there via **`globalThis`**, and TypeScript sees the right types via **path-mapped declaration bundles**.
-
-### How runtime access works
-
-[packages/core/src/lib/index.ts:39](packages/core/src/lib/index.ts#L39) does two things on first import:
-
-```ts
-export const ioc = { /* all services injected via di-kit */ };
-init();                                                   // resolve the container
-
-declare global {
-  var core: typeof ioc;                                   // augment globalThis types
-}
-Object.assign(globalThis, { core: ioc });                 // attach at runtime
-```
-
-[config/loader.config.ts](config/loader.config.ts) is the very first thing `@backtest-kit/cli` imports — it pulls in `@pro/core` and `@pro/main`, which triggers the `globalThis` assignment **before any strategy file evaluates**.
-
-From the strategy author's perspective, the container is just *there*:
-
-```ts
-// content/apr_2026.strategy/apr_2026.strategy.ts (you can add anywhere)
-listenActivePing(async ({ symbol, currentPrice }) => {
-  await core.candleDbService.create({ /* … */ });        // ← no import, fully typed
-  core.loggerService.info("active-ping", { symbol });
-});
-```
-
-### How TypeScript sees the right types
-
-The root [tsconfig.json](tsconfig.json) wires up two things:
-
-```json
-{
-  "compilerOptions": {
-    "paths": {
-      "@pro/core": ["./packages/core/types.d.ts"],
-      "@pro/main": ["./packages/main/types.d.ts"]
-    }
-  },
-  "include": ["./config", "./content"]
-}
-```
-
-1. **Path aliases** point at the **rolled-up `.d.ts` bundles** that rollup-plugin-dts generates next to each package's `build/index.cjs`. One file, no nested directory tree, no `tsc --build` graph.
-2. **`include: ["./config", "./content"]`** — note that `./packages` is *not* included. Each package has its own `tsconfig.json` ([packages/core/tsconfig.json](packages/core/tsconfig.json), [packages/main/tsconfig.json](packages/main/tsconfig.json)) used only by its rollup build. The root tsconfig only type-checks the **runtime-loaded** code (`config/*.ts` and `content/**/*.ts`), exactly the surface where `globalThis.core` needs to resolve.
-3. **`declare global { var core: typeof ioc }`** inside `packages/core/src/lib/index.ts` survives the dts rollup, so `types.d.ts` re-emits the same global augmentation. Pulling in `@pro/core` (or being in the include scope at all, since types.d.ts is the import target) is enough for `core.xxx` to be typed.
-
-The combination means a strategy file in `./content/` can write `core.candleDbService.findBySymbolIntervalTimestamp(...)` and:
-
-- ✅ TypeScript resolves it through the workspace-typed global
-- ✅ At runtime, the symbol comes from the in-memory IoC container provisioned by `@pro/core`
-- ✅ No import statement, no bundler config, no relative path that would break under a different load order
-
-This is what makes the runtime **self-enforcing**: the strategy file cannot accidentally import a stale local copy of a service, and cannot fail to type-check while still running, because both ends point at the same `types.d.ts` artifact.
 
 ---
 
@@ -269,20 +167,6 @@ Re-pointing any of these to a custom adapter is one line in [config/setup.config
 | `CC_REDIS_USER` | `default` | Redis ACL user |
 | `CC_REDIS_PASSWORD` | `mysecurepassword` | Redis ACL password |
 | `CC_SYMBOL_LIST` | `BTCUSDT,POLUSDT,ZECUSDT,HYPEUSDT,XAUTUSDT,DOGEUSDT,SOLUSDT,PENGUUSDT,HBARUSDT` | Comma-separated symbols for Mode-A parallel runner |
-| `CC_TELEGRAM_API_ID`, `CC_TELEGRAM_API_HASH` | (test creds) | Telegram MTProto auth for `--session` mode |
-
----
-
-## 🧪 Strategy Anatomy (`apr_2026.strategy.ts`)
-
-The strategy in [content/apr_2026.strategy/apr_2026.strategy.ts](content/apr_2026.strategy/apr_2026.strategy.ts) implements a **moonbag-with-ladder** position model:
-
-- `addStrategySchema` registers a `getSignal` that always opens long with `Position.moonbag(...)` at `HARD_STOP = 25%`.
-- `listenActivePing` (#1) implements a ladder averaging buy: up to `LADDER_MAX_STEPS = 10` `commitAverageBuy(symbol, 100)` calls, gated by `getPositionEntryOverlap` so steps don't bunch within ±5% / ±1% of an existing entry.
-- `listenActivePing` (#2) closes the position with `commitClosePending` once `getPositionPnlPercent ≥ TARGET_PROFIT = 3`.
-- `listenError` funnels everything to `Log.debug`.
-
-The companion test file [apr_2026.test.ts](content/apr_2026.strategy/apr_2026.test.ts) is a minimal variant (no ladder, infinite-time signal) — useful as a sanity baseline.
 
 ---
 
