@@ -1,0 +1,13 @@
+{
+  "name": "@pro/core",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "rollup -c",
+    "test": "npm run build && node ./test/index.mjs",
+    "repl": "dotenv -e .env -- npm run build && node -e \"require('./build/index.cjs')\" --interactive"
+  },
+  "devDependencies": {
+    "worker-testbed": "2.0.0"
+  }
+}
