@@ -21,18 +21,6 @@
 
 `apr_2026.strategy.ts` prints `active <SYMBOL> backtest=<historicalMs> now=<wallClockMs>` on every `listenActivePing`. The file in this repo captured **297 events across 9 symbols** in **a single Node process**, against a hot Mongo + Redis cache, on a **HP Victus 15-FA1022CI** laptop (mid-range gaming-class, i.e. commodity developer hardware — not a server).
 
-### Test bench
-
-| Component | Spec |
-|---|---|
-| Model | HP Victus by HP Gaming Laptop 15-fa1xxx |
-| CPU | **13th Gen Intel® Core™ i5-13420H** — 8 cores / 12 threads, base 2.10 GHz, 12 MB L3 |
-| RAM | **16 GB** DDR4 (2× SK Hynix 8 GB @ 3200 MT/s) |
-| GPU | Intel UHD Graphics (iGPU) + NVIDIA GeForce RTX 2050 4 GB (dGPU, **unused** by the runtime — Node only) |
-| Storage | Samsung MZVL2512HCJQ NVMe SSD, 512 GB |
-| OS | Windows 10 Enterprise LTSC 19044 (64-bit) |
-| Node | single process; Mongo + Redis on the same machine via docker-compose |
-
 ### Measured numbers
 
 | Metric | Value |
@@ -45,6 +33,18 @@
 | **Aggregate replay speed (9 symbols)** | 9 × 703 = **≈ 6 326×** real-time |
 | Event throughput | 297 ev / 2.893 s = **≈ 103 events/sec** (one Node process) |
 | Frame coverage | `2026-04-01 → 2026-04-27` = 27 days × 1m candles = **38 880 candles/symbol × 9** = **~350 000 candle ticks** |
+
+### Test bench
+
+| Component | Spec |
+|---|---|
+| Model | HP Victus by HP Gaming Laptop 15-fa1xxx |
+| CPU | **13th Gen Intel® Core™ i5-13420H** — 8 cores / 12 threads, base 2.10 GHz, 12 MB L3 |
+| RAM | **16 GB** DDR4 (2× SK Hynix 8 GB @ 3200 MT/s) |
+| GPU | Intel UHD Graphics (iGPU) + NVIDIA GeForce RTX 2050 4 GB (dGPU, **unused** by the runtime — Node only) |
+| Storage | Samsung MZVL2512HCJQ NVMe SSD, 512 GB |
+| OS | Windows 10 Enterprise LTSC 19044 (64-bit) |
+| Node | single process; Mongo + Redis on the same machine via docker-compose |
 
 ### Why so fast?
 
