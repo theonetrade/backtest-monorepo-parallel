@@ -4,7 +4,7 @@
 
 > A **TypeScript monorepo template** for [backtest-kit](https://github.com/tripolskypetr/backtest-kit) that runs **9 symbols in parallel** with shared infrastructure (Mongo + Redis) and a **self-enforcement runtime** — strategy files in `./content/` can reach the workspace DI container (`globalThis.core`) at strategy-evaluation time without imports, without bundler hooks, and without touching the strategy author's code.
 
-![screenshot](https://raw.githubusercontent.com/tripolskypetr/backtest-kit/HEAD/assets/screenshots/screenshot16.png)
+![screenshot](./screencast.gif)
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/tripolskypetr/backtest-kit)
 [![npm](https://img.shields.io/npm/v/backtest-kit.svg?style=flat-square)](https://npmjs.org/package/backtest-kit)
