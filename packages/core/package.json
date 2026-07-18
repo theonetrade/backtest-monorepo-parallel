@@ -8,6 +8,6 @@
     "repl": "dotenv -e .env -- npm run build && node -e \"require('./build/index.cjs')\" --interactive"
   },
   "devDependencies": {
-    "worker-testbed": "3.0.0"
+    "worker-testbed": "4.0.0"
   }
 }
